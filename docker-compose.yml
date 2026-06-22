@@ -1,0 +1,57 @@
+# docker-compose.yml — 生产环境部署
+# 用法: docker compose up -d
+#
+# 前置条件:
+#   1. 在 docker-compose.yml 同目录放 .env.production
+#   2. docker compose --env-file .env.production up -d
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${APP_VERSION:-production}
+    image: wechat-article-exporter:production
+    container_name: wechat-article-exporter
+    restart: unless-stopped
+    ports:
+      # 宿主机端口映射: 容器内 3000 → 宿主机 3001 (留给 nginx 反向代理用)
+      - "127.0.0.1:3001:3000"
+    env_file:
+      - .env.production
+    volumes:
+      # KV 数据持久化到宿主机
+      - ./data/kv:/app/.data/kv
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/_debug?key=$DEBUG_KEY').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 可选: 单独建一个 nginx 容器 (或直接宿主机装 nginx)
+  nginx:
+    image: nginx:alpine
+    container_name: wechat-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/www:/var/www:ro
+    depends_on:
+      - app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

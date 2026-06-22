@@ -1,0 +1,41 @@
+# deploy/wechat-article-exporter.service
+# Systemd service — 用于非 Docker 直部署, 或作为 Docker 的补充进程管理
+#
+# 安装:
+#   sudo cp deploy/wechat-article-exporter.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable wechat-article-exporter
+#   sudo systemctl start wechat-article-exporter
+
+[Unit]
+Description=WeChat Article Exporter
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# 运行用户 (建议创建专用用户)
+User=node
+Group=node
+
+# 工作目录
+WorkingDirectory=/opt/wechat-article-exporter
+
+# 启动命令 (Docker Compose 方式)
+ExecStart=/usr/bin/docker compose --env-file /opt/wechat-article-exporter/.env.production up
+ExecStop=/usr/bin/docker compose --env-file /opt/wechat-article-exporter/.env.production down
+Restart=always
+RestartSec=10
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+
+# 安全
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/wechat-article-exporter/data
+
+[Install]
+WantedBy=multi-user.target

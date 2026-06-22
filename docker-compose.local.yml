@@ -1,0 +1,31 @@
+# docker-compose.local.yml — 本地调试用 (模拟生产环境)
+# 用法: docker compose -f docker-compose.local.yml up -d
+#
+# 与生产环境的区别:
+#   - 使用 Dockerfile.local (复用宿主机构建产物, 省去容器内构建)
+#   - 端口 3000 直接暴露 (localhost:3000)
+#   - 无 nginx, 无 SSL
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+      args:
+        VERSION: local
+    image: wechat-article-exporter:local
+    container_name: wechat-article-exporter-local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.dev
+    volumes:
+      # KV 数据持久化 (独立目录, 不跟生产混)
+      - ./data/kv-dev:/app/.data/kv
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

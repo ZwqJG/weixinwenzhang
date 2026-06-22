@@ -1,7 +1,9 @@
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const samplesDirectory = path.join(__dirname, '../samples');
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const samplesDirectory = path.join(currentDir, '../samples');
 
 interface HtmlSampleGroup {
   name: string;
