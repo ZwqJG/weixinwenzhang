@@ -1,117 +1,70 @@
 <script setup lang="ts">
-import type { ChipColor } from '#ui/types';
-import CredentialsDialog, { type CredentialState } from '~/components/global/CredentialsDialog.vue';
-import QQGroupModal from '~/components/modal/QQGroup.vue';
-import { docsWebSite } from '~/config';
-import { gotoLink } from '~/utils';
+import useServiceUser from '~/composables/useServiceUser';
+import useLoginAccount from '~/composables/useLoginAccount';
 
-const modal = useModal();
+const router = useRouter();
+const toast = useToast();
+const serviceUser = useServiceUser();
+const loginAccount = useLoginAccount();
 
-// CredentialDialog 相关变量
-const credentialsDialogOpen = ref(false);
-const credentialState = ref<CredentialState>('inactive');
-const credentialPendingCount = ref(0);
-const credentialColor: ComputedRef<ChipColor> = computed<ChipColor>(() => {
-  switch (credentialState.value) {
-    case 'active':
-      return 'green';
-    case 'inactive':
-      return 'gray';
-    case 'warning':
-      return 'amber';
-    default:
-      return 'gray';
+const loggedIn = computed(() => !!serviceUser.value?.token);
+const avatarLetter = computed(() => {
+  return (serviceUser.value?.nickname || '?').charAt(0).toUpperCase();
+});
+
+function goLogin() {
+  router.push('/user/login');
+}
+
+function goUserCenter() {
+  router.push('/user/dashboard');
+}
+
+async function handleLogout() {
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' });
+  } catch {
+    // ignore
   }
-});
+  serviceUser.value = null;
+  loginAccount.value = null;
+  toast.add({ title: '已退出登录', color: 'gray' });
+}
 
-const credentialBadgeText = computed(() => {
-  const count = credentialPendingCount.value;
-  if (count <= 0) return '';
-  return count > 9 ? '+' : `${count}`;
-});
-const isCredentialActive = computed(() => credentialState.value === 'active');
+const userMenuItems = computed(() => [
+  [
+    { label: serviceUser.value?.nickname || '', disabled: true },
+  ],
+  [
+    { label: '用户中心', icon: 'i-heroicons-user', click: goUserCenter },
+    { label: '退出登录', icon: 'i-heroicons-arrow-right-on-rectangle', click: handleLogout },
+  ],
+]);
 </script>
 
 <template>
   <ul class="hidden md:flex items-center gap-5">
-    <!-- 商业版「公号三刀」 -->
-    <li>
-      <UTooltip text="商业版 · 公号三刀（更稳定 · 免代理）">
-        <UIcon
-          @click="gotoLink('https://github.com/zoro-build/wechat')"
-          name="i-lucide:crown"
-          class="size-7 text-amber-400 hover:text-amber-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
-    </li>
-
-    <!-- 通知 -->
-    <!--    <li>-->
-    <!--      <UTooltip text="通知">-->
-    <!--        <UChip text="3" size="2xl" color="amber">-->
-    <!--          <UIcon name="i-lucide:bell" class="action-icon" />-->
-    <!--        </UChip>-->
-    <!--      </UTooltip>-->
-    <!--    </li>-->
-
-    <li>
-      <UTooltip text="加入QQ群">
-        <UIcon
-          @click="modal.open(QQGroupModal)"
-          name="i-tdesign:logo-qq-filled"
-          class="size-7 text-zinc-400 hover:text-blue-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
-    </li>
-
-    <!-- Credential -->
-    <li>
-      <CredentialsDialog
-        v-model:open="credentialsDialogOpen"
-        v-model:state="credentialState"
-        @update:pending-count="credentialPendingCount = $event"
-      />
-      <UTooltip text="抓取 Credentials">
-        <div class="relative">
-          <UIcon
-            @click="credentialsDialogOpen = true"
-            name="i-lucide:dog"
-            :class="[
-              'size-7 cursor-pointer transition-colors',
-              { 'text-zinc-400 hover:text-blue-500': !isCredentialActive },
-              { 'text-green-500 hover:text-green-600': isCredentialActive },
-            ]"
-          />
-          <span
-            v-if="credentialBadgeText"
-            class="absolute -top-1 -right-1 text-[10px] leading-none rounded-full bg-rose-500 text-white px-1.5 py-0.5 min-w-[16px] text-center"
+    <!-- 服务用户头像 / 登录 -->
+    <li class="border-l border-slate-3 dark:border-slate-600 pl-5">
+      <template v-if="loggedIn">
+        <UDropdown :items="userMenuItems">
+          <button
+            class="size-8 rounded-full bg-primary-500 text-white text-sm font-semibold flex items-center justify-center hover:bg-primary-600 transition-colors cursor-pointer"
           >
-            {{ credentialBadgeText }}
-          </span>
-        </div>
-      </UTooltip>
-    </li>
-
-    <!-- 文档 -->
-    <li>
-      <UTooltip text="文档">
-        <UIcon
-          name="i-lucide:book-open"
-          @click="gotoLink(docsWebSite)"
-          class="size-7 text-zinc-400 hover:text-blue-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
-    </li>
-
-    <!-- GitHub -->
-    <li>
-      <UTooltip text="GitHub">
-        <UIcon
-          @click="gotoLink('https://github.com/wechat-article/wechat-article-exporter')"
-          name="i-lucide:github"
-          class="size-7 text-zinc-400 hover:text-blue-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
+            {{ avatarLetter }}
+          </button>
+        </UDropdown>
+      </template>
+      <template v-else>
+        <UTooltip text="登录账号">
+          <button
+            @click="goLogin"
+            class="size-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-300 transition-colors cursor-pointer"
+          >
+            <UIcon name="i-lucide:user" class="size-5" />
+          </button>
+        </UTooltip>
+      </template>
     </li>
   </ul>
 </template>

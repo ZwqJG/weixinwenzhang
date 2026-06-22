@@ -1,21 +1,33 @@
 <script setup lang="ts">
+import { SUPER_ADMIN_PHONE } from '~/config';
+import useServiceUser from '~/composables/useServiceUser';
+
 interface NavItem {
   name: string;
   icon: string;
   href: string;
-  insider?: boolean;
+  adminOnly?: boolean;
   tags?: string[];
 }
 
-const items = ref<NavItem[]>([
+const serviceUser = useServiceUser();
+
+const allItems: NavItem[] = [
   { name: '公众号管理', icon: 'i-lucide:users', href: '/dashboard/account' },
   { name: '文章下载', icon: 'i-lucide:file-down', href: '/dashboard/article' },
   { name: '单篇文章下载', icon: 'i-lucide:file-text', href: '/dashboard/single' },
   { name: '合集下载', icon: 'i-lucide:library-big', href: '/dashboard/album' },
-  { name: '公共代理', icon: 'i-lucide:globe', href: '/dashboard/proxy' },
-  { name: 'API', icon: 'i-lucide:cable', href: '/dashboard/api' },
-  { name: '设置', icon: 'i-lucide:settings', href: '/dashboard/settings' },
-]);
+  { name: '公共代理', icon: 'i-lucide:globe', href: '/dashboard/proxy', adminOnly: true },
+  { name: 'API', icon: 'i-lucide:cable', href: '/dashboard/api', adminOnly: true },
+  { name: '设置', icon: 'i-lucide:settings', href: '/dashboard/settings', adminOnly: true },
+];
+
+const items = computed(() => {
+  const isAdmin = serviceUser.value?.role === 'admin' || serviceUser.value?.phone === SUPER_ADMIN_PHONE;
+  if (isAdmin) return allItems;
+  // Regular users: filter out admin-only menus
+  return allItems.filter(item => !item.adminOnly);
+});
 </script>
 
 <template>

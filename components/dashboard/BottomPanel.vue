@@ -8,6 +8,8 @@ import type { LogoutResponse } from '~/types/types';
 
 const loginAccount = useLoginAccount();
 const modal = useModal();
+const serviceUser = useServiceUser();
+const router = useRouter();
 
 const now = ref(new Date());
 const distance = computed(() => {
@@ -72,6 +74,10 @@ const warning = computed(() => {
 });
 
 function login() {
+  if (!serviceUser.value?.token) {
+    router.push('/user/login?redirect=/dashboard');
+    return;
+  }
   modal.open(LoginModal);
 }
 

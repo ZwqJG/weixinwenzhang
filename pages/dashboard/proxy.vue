@@ -64,6 +64,10 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: ['admin-guard'],
+});
+
 import { Loader } from 'lucide-vue-next';
 import { request } from '#shared/utils/request';
 import ProxyMetrics from '~/components/ProxyMetrics.vue';

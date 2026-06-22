@@ -11,6 +11,10 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: ['admin-guard'],
+});
+
 import { websiteName } from '~/config';
 import { apis } from '~/config/public-apis';
 

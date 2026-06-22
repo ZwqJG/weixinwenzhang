@@ -25,10 +25,13 @@ import { sharedGridOptions } from '~/config/shared-grid-options';
 import { deleteAccountData } from '~/store/v2';
 import { getArticleCache, hitCache } from '~/store/v2/article';
 import { getAllInfo, getInfoCache, importMpAccounts, type MpAccount } from '~/store/v2/info';
+import { getAllCategories, type Category } from '~/store/v2/category';
 import type { AccountManifest } from '~/types/account';
 import type { Preferences } from '~/types/preferences';
 import { exportAccountJsonFile } from '~/utils/exporter';
 import { createBooleanColumnFilterParams, createDateColumnFilterParams } from '~/utils/grid';
+import GridAccountCategoryCell from '~/components/grid/AccountCategoryCell.vue';
+import CategoryManageDialog from '~/components/dialog/CategoryManageDialog.vue';
 
 useHead({
   title: `公众号管理 | ${websiteName}`,
@@ -42,6 +45,8 @@ interface PromiseInstance {
 const toast = toastFactory();
 const modal = useModal();
 const { checkLogin } = useLoginCheck();
+const { requireLogin: requireServiceLogin } = useRequireLogin();
+const syncAccounts = useAccountSync();
 
 const { getSyncTimestamp, getSyncRangeLabel, isSyncAll } = useSyncDeadline();
 const syncToTimestamp = getSyncTimestamp();
@@ -57,21 +62,42 @@ accountEventBus.on(event => {
 });
 
 const searchAccountDialogRef = ref<typeof GlobalSearchAccountDialog | null>(null);
+const categoryManageDialogRef = ref<typeof CategoryManageDialog | null>(null);
+const categories = ref<Category[]>([]);
+
+onMounted(async () => {
+  categories.value = await getAllCategories();
+  await syncAccounts.syncFromServer();
+  await refresh();
+});
 
 const addBtnLoading = ref(false);
 function addAccount() {
   if (!checkLogin()) return;
+  if (!requireServiceLogin()) return;
 
   searchAccountDialogRef.value!.open();
 }
-async function onSelectAccount(account: MpAccount) {
+async function onSelectAccount(account: { fakeid: string; nickname?: string; round_head_img?: string }, categoryId?: number) {
   addBtnLoading.value = true;
-  await loadAccountArticle(account, false);
+  const mpAccount: MpAccount = {
+    fakeid: account.fakeid,
+    nickname: account.nickname,
+    round_head_img: account.round_head_img,
+    categoryId: categoryId,
+    completed: false,
+    count: 0,
+    articles: 0,
+    total_count: 0,
+  };
+  await loadAccountArticle(mpAccount, false);
   await refresh();
   addBtnLoading.value = false;
-  toast.success('公众号添加成功', `已成功添加公众号【${account.nickname}】，并同步了第一页的文章数据`);
-  // 通知 Credentials 面板按钮立即变更为“已添加”
-  accountEventBus.emit('account-added', { fakeid: account.fakeid });
+  toast.success('公众号添加成功', `已成功添加公众号【${mpAccount.nickname}】，并同步了第一页的文章数据`);
+  // 通知 Credentials 面板按钮立即变更为"已添加"
+  accountEventBus.emit('account-added', { fakeid: mpAccount.fakeid });
+  // 同步到服务端，与该登录用户关联
+  syncAccounts.pushToServer(account.fakeid, account.nickname, account.round_head_img, categoryId);
 }
 
 // 表示同步过程中是否执行了取消操作
@@ -219,6 +245,26 @@ const columnDefs = ref<ColDef[]>([
     filter: 'agTextColumnFilter',
     tooltipField: 'nickname',
     minWidth: 200,
+  },
+  {
+    colId: 'categoryId',
+    headerName: '分类',
+    field: 'categoryId',
+    cellDataType: 'text',
+    filter: 'agSetColumnFilter',
+    filterParams: {
+      values: () => categories.value.map(c => c.id),
+      valueFormatter: (params: any) => {
+        const cat = categories.value.find(c => c.id === params.value);
+        return cat?.name ?? '未分类';
+      },
+      keyCreator: (params: any) => params?.value ?? '__none__',
+    },
+    filterValueGetter: (params: ValueGetterParams) => params.data.categoryId,
+    cellRenderer: GridAccountCategoryCell,
+    minWidth: 160,
+    maxWidth: 220,
+    cellClass: 'flex justify-center items-center',
   },
   {
     colId: 'create_time',
@@ -421,6 +467,8 @@ function deleteSelectedAccounts() {
       } finally {
         isDeleting.value = false;
         await refresh();
+        // 同步删除到服务端
+        ids.forEach(fakeid => syncAccounts.removeFromServer(fakeid));
       }
     },
   });
@@ -484,6 +532,12 @@ function exportAccount() {
 }
 
 const { getActualDateRange } = useSyncDeadline();
+
+// 分类变更后刷新
+async function onCategoryChanged() {
+  categories.value = await getAllCategories();
+  await refresh();
+}
 </script>
 
 <template>
@@ -529,6 +583,15 @@ const { getActualDateRange } = useSyncDeadline();
           @click="loadSelectedAccountArticle"
           >同步</UButton
         >
+        <UDivider orientation="vertical" class="h-6 self-center" />
+        <UButton
+          icon="i-lucide:tags"
+          color="orange"
+          variant="soft"
+          @click="categoryManageDialogRef?.open()"
+        >
+          分类管理
+        </UButton>
         <div class="hidden xl:flex flex-1 justify-end">
           <span class="self-end text-sm text-blue-500 font-medium">同步范围: {{ getActualDateRange() }}</span>
         </div>
@@ -550,6 +613,12 @@ const { getActualDateRange } = useSyncDeadline();
     </div>
 
     <!-- 添加公众号弹框 -->
-    <GlobalSearchAccountDialog ref="searchAccountDialogRef" @select:account="onSelectAccount" />
+    <GlobalSearchAccountDialog
+      ref="searchAccountDialogRef"
+      @select:account="onSelectAccount"
+    />
+
+    <!-- 分类管理弹框 -->
+    <CategoryManageDialog ref="categoryManageDialogRef" @category-changed="onCategoryChanged" />
   </div>
 </template>
