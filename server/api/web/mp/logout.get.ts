@@ -2,9 +2,10 @@
  * 退出登录接口
  */
 
-import { parseCookies } from 'h3';
+import { getRequestHeader, parseCookies } from 'h3';
 import { cookieStore, getTokenFromStore } from '~/server/utils/CookieStore';
 import { proxyMpRequest } from '~/server/utils/proxy-request';
+import { getTokenFromRequest, updateSessionMpAuthKey } from '~/server/utils/auth';
 
 export default defineEventHandler(async event => {
   const token = await getTokenFromStore(event);
@@ -27,6 +28,11 @@ export default defineEventHandler(async event => {
   const authKey = getRequestHeader(event, 'X-Auth-Key') || parseCookies(event)['auth-key'];
   if (authKey) {
     cookieStore.removeCookie(authKey);
+    // 同时清理用户 session 中的关联
+    const sessionToken = getTokenFromRequest(event);
+    if (sessionToken) {
+      await updateSessionMpAuthKey(sessionToken, null);
+    }
   }
 
   return {

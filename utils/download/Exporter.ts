@@ -1,9 +1,13 @@
 import dayjs from 'dayjs';
 import mime from 'mime';
-import TurndownService from 'turndown';
 import { filterInvalidFilenameChars, sleep } from '#shared/utils/helpers';
 import { parseCgiDataNew } from '#shared/utils/html';
-import { renderHTMLFromCgiDataNew, renderTextFromCgiDataNew } from '#shared/utils/renderer';
+import {
+  renderExportHtmlFromCgiDataNew,
+  renderHTMLFromCgiDataNew,
+  renderMarkdownFromCgiDataNew,
+  renderTextFromCgiDataNew,
+} from '#shared/utils/renderer';
 import usePreferences from '~/composables/usePreferences';
 import { getArticleByLink } from '~/store/v2/article';
 import { getHtmlCache, type HtmlAsset } from '~/store/v2/html';
@@ -353,29 +357,36 @@ export class Exporter extends BaseDownloader {
         const dirname = await this.exportDirName(cached.url);
 
         console.log(`开始导出: ${cached.title}，目录名: ${dirname}`);
-        const html = await cached.file.text();
         const resourceMap = await getResourceMapCache(url);
-        if (!resourceMap) {
-          console.warn(`文章(url: ${url} )的 resource-map 缺失，无法导出`);
+        const urlmap = new Map<string, string>();
+        if (resourceMap) {
+          for (const resourceUrl of resourceMap.resources) {
+            const resource = await getResourceCache(resourceUrl);
+            if (!resource) {
+              continue;
+            }
+
+            const uuid = new Date().getTime() + Math.random().toString();
+            const ext = mime.getExtension(resource.file.type);
+            if (ext) {
+              await this.writeFile(dirname + `/assets/${uuid}.${ext}`, resource.file);
+              urlmap.set(resourceUrl, `./assets/${uuid}.${ext}`);
+            }
+          }
+        }
+
+        const rawHtml = await cached.file.text();
+        const cgiData = await parseCgiDataNew(rawHtml);
+        if (!cgiData) {
+          console.warn(`文章(url: ${url})无法解析 cgiDataNew，跳过导出`);
           return;
         }
 
-        const urlmap = new Map<string, string>();
-        for (const resourceUrl of resourceMap.resources) {
-          const resource = await getResourceCache(resourceUrl);
-          if (!resource) {
-            continue;
-          }
-
-          const uuid = new Date().getTime() + Math.random().toString();
-          const ext = mime.getExtension(resource.file.type);
-          if (ext) {
-            await this.writeFile(dirname + `/assets/${uuid}.${ext}`, resource.file);
-            urlmap.set(resourceUrl, `./assets/${uuid}.${ext}`);
-          }
-        }
-
-        const finalHtml = await this.normalizeHtml(cached, html, urlmap);
+        const finalHtml = await renderExportHtmlFromCgiDataNew(
+          cgiData,
+          (preferences.value as Preferences).exportConfig.exportHtmlIncludeComments,
+          urlmap
+        );
         const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
 
         await this.writeFile(dirname + '/index.html', blob);
@@ -408,15 +419,24 @@ export class Exporter extends BaseDownloader {
     const total = this.urls.length;
     this.emit('export:total', total);
 
-    const turndownService = new TurndownService();
-
     await this.processFileExportQueue(this.urls, async url => {
       const filename = await this.exportDirName(url);
       console.log(`开始导出: ${filename}(${url})`);
 
-      const content = await this.getRenderedHTML(url);
-      if (!content) return;
-      const markdown = turndownService.turndown(content);
+      const cached = await getHtmlCache(url);
+      if (!cached) {
+        console.warn(`文章(url: ${url} )的 html 还未下载，不能导出`);
+        return;
+      }
+
+      const rawHtml = await cached.file.text();
+      const cgiData = await parseCgiDataNew(rawHtml);
+      if (!cgiData) {
+        console.warn(`文章(url: ${url} )无法解析 cgiDataNew，跳过导出`);
+        return;
+      }
+
+      const markdown = await renderMarkdownFromCgiDataNew(cgiData, false);
 
       const blob = new Blob([markdown], { type: 'text/markdown' });
       await this.writeFile(filename + '.md', blob);

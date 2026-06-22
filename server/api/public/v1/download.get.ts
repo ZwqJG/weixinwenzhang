@@ -1,6 +1,7 @@
 import TurndownService from 'turndown';
 import { urlIsValidMpArticle } from '#shared/utils';
 import { normalizeHtml, parseCgiDataNew } from '#shared/utils/html';
+import { stripStyleTags } from '#shared/utils/renderer';
 import { USER_AGENT } from '~/config';
 
 interface SearchBizQuery {
@@ -62,13 +63,15 @@ export default defineEventHandler(async event => {
           'Content-Type': 'text/plain; charset=UTF-8',
         },
       });
-    case 'markdown':
-      return new Response(new TurndownService().turndown(normalizeHtml(rawHtml, 'html')), {
+    case 'markdown': {
+      const htmlForMd = stripStyleTags(normalizeHtml(rawHtml, 'html'));
+      return new Response(new TurndownService().turndown(htmlForMd), {
         status: 200,
         headers: {
           'Content-Type': 'text/markdown; charset=UTF-8',
         },
       });
+    }
     case 'json':
       return await parseCgiDataNew(rawHtml);
     default:

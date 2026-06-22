@@ -23,7 +23,11 @@ export async function renderHTMLFromCgiDataNew(cgiData: any, comments = true) {
   // 渲染留言
   let commentHTML = '';
   if (comments) {
-    commentHTML = await renderComments(cgiData.link);
+    try {
+      commentHTML = await renderComments(cgiData.link);
+    } catch (error) {
+      console.warn('renderHTMLFromCgiDataNew: comment rendering unavailable, skipping', error);
+    }
   }
 
   return `<!DOCTYPE html>
@@ -194,7 +198,30 @@ ${commentHTML}
 ${bottomBarHTML}
 </div>
 </body>
-</html>`;
+  </html>`;
+}
+
+export function stripStyleTags(html: string): string {
+  return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+}
+
+export async function renderMarkdownFromCgiDataNew(cgiData: any, comments = true): Promise<string> {
+  void comments;
+  return renderTextFromCgiDataNew(cgiData);
+}
+
+export async function renderExportHtmlFromCgiDataNew(
+  cgiData: any,
+  comments = true,
+  urlmap: Map<string, string> = new Map()
+): Promise<string> {
+  let html = await renderHTMLFromCgiDataNew(cgiData, comments);
+
+  for (const [sourceUrl, targetUrl] of urlmap) {
+    html = html.split(sourceUrl).join(targetUrl);
+  }
+
+  return html;
 }
 
 /**
@@ -417,13 +444,19 @@ function renderMetaInfo(cgiData: any): string {
  * @param cgiData
  */
 async function renderBottomBar(cgiData: any) {
-  const metadata: ArticleMetadata = (await getMetadataCache(cgiData.link)) || {
+  let metadata: ArticleMetadata = {
     readNum: 0,
     oldLikeNum: 0,
     commentNum: 0,
     likeNum: 0,
     shareNum: 0,
   };
+
+  try {
+    metadata = (await getMetadataCache(cgiData.link)) || metadata;
+  } catch (error) {
+    console.warn('renderBottomBar: metadata cache unavailable, falling back to zeros', error);
+  }
 
   return `<div class="__bottom-bar__">
 <div class="left">

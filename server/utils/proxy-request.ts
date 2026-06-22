@@ -2,9 +2,10 @@ import dayjs from 'dayjs';
 import { H3Event, parseCookies } from 'h3';
 import { v4 as uuidv4 } from 'uuid';
 import { isDev, USER_AGENT } from '~/config';
-import { RequestOptions } from '~/server/types';
+import type { RequestOptions } from '~/server/types';
 import { cookieStore, getCookieFromStore } from '~/server/utils/CookieStore';
 import { logRequest, logResponse } from '~/server/utils/logger';
+import { getTokenFromRequest, getSessionByToken, updateSessionMpAuthKey } from '~/server/utils/auth';
 
 /**
  * 代理微信公众号请求
@@ -91,6 +92,20 @@ export async function proxyMpRequest(options: RequestOptions) {
         throw new Error('cookie 写入 KV 存储失败');
       }
       console.log('cookie 写入成功');
+
+      // 关联 auth-key 到当前用户 session（如果用户已登录服务账号）
+      try {
+        const sessionToken = getTokenFromRequest(options.event);
+        if (sessionToken) {
+          const sessionData = await getSessionByToken(sessionToken);
+          if (sessionData) {
+            await updateSessionMpAuthKey(sessionToken, authKey, sessionData);
+            console.log('auth-key 已关联到用户 session:', sessionData.phone);
+          }
+        }
+      } catch (error) {
+        console.error('auth-key 关联 session 失败:', error);
+      }
 
       setCookies = [
         `auth-key=${authKey}; Path=/; Expires=${dayjs().add(4, 'days').toString()}; Secure; HttpOnly`,

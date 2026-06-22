@@ -18,6 +18,9 @@ export interface MpAccount {
 
   // 最后更新时间
   last_update_time?: number;
+
+  // 所属分类 ID
+  categoryId?: number;
 }
 
 /**
@@ -88,6 +91,32 @@ export async function getAccountNameByFakeid(fakeid: string): Promise<string | n
   return account.nickname || null;
 }
 
+/**
+ * 更新公众号的分类
+ */
+export async function updateAccountCategory(fakeid: string, categoryId: number | undefined): Promise<void> {
+  await db.transaction('rw', 'info', async () => {
+    const infoCache = await db.info.get(fakeid);
+    if (infoCache) {
+      infoCache.categoryId = categoryId;
+      db.info.put(infoCache);
+    }
+  });
+}
+
+/**
+ * 清除指定分类下所有公众号的分类引用（分类被删除时调用）
+ */
+export async function clearCategoryFromAccounts(categoryId: number): Promise<void> {
+  await db.transaction('rw', 'info', async () => {
+    const accounts = await db.info.where('categoryId').equals(categoryId).toArray();
+    for (const account of accounts) {
+      account.categoryId = undefined;
+      await db.info.put(account);
+    }
+  });
+}
+
 // 批量导入公众号
 export async function importMpAccounts(mpAccounts: MpAccount[]): Promise<void> {
   for (const mpAccount of mpAccounts) {
@@ -99,6 +128,7 @@ export async function importMpAccounts(mpAccounts: MpAccount[]): Promise<void> {
     mpAccount.create_time = undefined;
     mpAccount.update_time = undefined;
     mpAccount.last_update_time = undefined;
+    mpAccount.categoryId = undefined;
     await updateInfoCache(mpAccount);
   }
 }

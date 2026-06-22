@@ -3,6 +3,96 @@ import { EXTERNAL_API_SERVICE } from '~/config';
 import { extractCommentId } from '~/utils/comment';
 
 /**
+ * 从原始 HTML 中提取 window.cgiDataNew 对象（新模板 JS 渲染的数据）
+ * @param rawHTML 公众号文章的原始 html
+ * @returns 解析后的 cgiDataNew 对象，失败返回 null
+ */
+function parseCgiDataFromHtml(rawHTML: string): any | null {
+  const code = extractCgiScript(rawHTML);
+  if (!code) return null;
+
+  try {
+    const sandbox: any = { window: {} };
+    sandbox.window = sandbox;
+    const func = new Function('window', code);
+    func(sandbox.window);
+    return sandbox.cgiDataNew || null;
+  } catch (e) {
+    console.error('parseCgiDataFromHtml 失败:', e);
+    return null;
+  }
+}
+
+/**
+ * 从 cgiDataNew 数据构建文章内容的 HTML 字符串
+ */
+function buildArticleHtmlFromData(data: any): string {
+  const parts: string[] = [];
+
+  // 标题
+  if (data.title) {
+    parts.push(`<h1 class="title">${escapeHtml(data.title)}</h1>`);
+  }
+
+  // 元信息（作者、时间）
+  const metaParts: string[] = [];
+  if (data.nick_name) {
+    metaParts.push(`<span class="nick_name">${escapeHtml(data.nick_name)}</span>`);
+  }
+  if (data.create_time) {
+    metaParts.push(`<span class="create_time">${escapeHtml(data.create_time)}</span>`);
+  }
+  if (data.signature) {
+    metaParts.push(`<span class="signature">${escapeHtml(data.signature)}</span>`);
+  }
+  if (metaParts.length > 0) {
+    parts.push(`<div class="__meta__">${metaParts.join(' · ')}</div>`);
+  }
+
+  // 原文链接
+  if (data.link) {
+    parts.push(`<blockquote class="source">原文地址: <a href="${escapeHtml(data.link)}" target="_blank">${escapeHtml(data.link)}</a></blockquote>`);
+  }
+
+  // 判断文章类型
+  const itemShowType = Number(data.item_show_type) || 0;
+
+  // 图片型文章（item_show_type = 8）：图片列表
+  if (itemShowType === 8 && Array.isArray(data.picture_page_info_list) && data.picture_page_info_list.length > 0) {
+    parts.push('<div class="picture_content">');
+    data.picture_page_info_list.forEach((pic: any, i: number) => {
+      const imgUrl = pic.cdn_url || '';
+      if (imgUrl) {
+        parts.push(`<div class="picture_item">`);
+        parts.push(`  <img src="${escapeHtml(imgUrl)}" alt="图${i + 1}" />`);
+        parts.push(`  <div class="picture_item_label">图${i + 1}</div>`);
+        parts.push(`</div>`);
+      }
+    });
+    parts.push('</div>');
+  }
+
+  // 文字内容（content_noencode / desc）
+  const textContent = data.content_noencode || data.desc || '';
+  if (textContent) {
+    // 将换行符转为 <br>
+    const textHtml = escapeHtml(textContent).replace(/\\x0a/g, '\n').replace(/\n/g, '<br>');
+    parts.push(`<div class="text_content">${textHtml}</div>`);
+  }
+
+  return parts.join('\n');
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * 处理文章的 html 内容
  * @description 采用 cheerio 库解析并修改 html 内容
  * @param rawHTML 公众号文章的原始 html
@@ -13,8 +103,25 @@ export function normalizeHtml(rawHTML: string, format: 'html' | 'text' = 'html')
   const $ = cheerio.load(rawHTML);
   const $jsArticleContent = $('#js_article');
 
-  // #js_content 默认是不可见的(通过js修改为可见)，需要移除该样式
-  $jsArticleContent.find('#js_content').removeAttr('style');
+  // 检查是否为旧模板（#js_content 存在）
+  const hasJsContent = $jsArticleContent.find('#js_content').length > 0;
+
+  if (hasJsContent) {
+    // 旧模板：#js_content 默认是不可见的(通过js修改为可见)，移除该样式
+    $jsArticleContent.find('#js_content').removeAttr('style');
+  } else {
+    // 新模板：#js_content 不存在，尝试从 window.cgiDataNew 提取内容
+    try {
+      const cgiData = parseCgiDataFromHtml(rawHTML);
+      if (cgiData) {
+        const articleHtml = buildArticleHtmlFromData(cgiData);
+        // 将构建的内容插入到 #js_article 中
+        $jsArticleContent.append(`<div id="js_content" class="wx_rich_media_content">${articleHtml}</div>`);
+      }
+    } catch (e) {
+      console.error('normalizeHtml: 从 cgiDataNew 提取内容失败', e);
+    }
+  }
 
   // 删除无用dom元素
   $jsArticleContent.find('#js_top_ad_area').remove();
@@ -81,6 +188,13 @@ export function normalizeHtml(rawHTML: string, format: 'html' | 'text' = 'html')
               height: 16px;
               margin-right: 3px;
           }
+          .title { font-size: 22px; line-height: 1.4; margin-bottom: 14px; font-weight: 500; }
+          .__meta__ { color: rgba(0,0,0,0.3); font-size: 15px; margin-bottom: 50px; }
+          .__meta__ .nick_name { color: #576B95; }
+          blockquote.source { padding: 10px; margin: 30px 0; border-left: 5px solid #ccc; color: #333; font-style: italic; }
+          .text_content { margin-bottom: 50px; font-size: 17px; white-space: pre-wrap; word-wrap: break-word; line-height: 28px; }
+          .picture_content .picture_item { margin-bottom: 30px; text-align: center; }
+          .picture_content .picture_item .picture_item_label { text-align: center; font-size: 14px; color: rgba(0,0,0,0.3); margin-top: 8px; }
       </style>
   </head>
   <body class="${bodyCls}">
