@@ -26,6 +26,7 @@ samples/**/output
 .env
 .env.*
 !.env.example
+!.env.dev
 
 # wrangler
 .wrangler

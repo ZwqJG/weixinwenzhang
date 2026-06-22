@@ -36,18 +36,6 @@ export default defineNuxtConfig({
   },
   nitro: {
     minify: process.env.NODE_ENV === 'production',
-    rollupConfig: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('monaco-editor')) return 'monaco-editor';
-            if (id.includes('@nuxt/ui') || id.includes('@nuxt/icon')) return 'nuxt-ui';
-            if (id.includes('ag-grid')) return 'ag-grid';
-            return 'vendor';
-          }
-        },
-      },
-    },
     storage: {
       kv: {
         driver: process.env.NITRO_KV_DRIVER || 'memory',

@@ -79,3 +79,5 @@ export const ITEM_SHOW_TYPE: Record<number, string> = {
 export const EXTERNAL_API_SERVICE = 'https://my-cron-service.deno.dev';
 
 export const STATUS_API_SERVICE = 'https://status.mptext.top';
+
+export const SUPER_ADMIN_PHONE = '18810709757';
