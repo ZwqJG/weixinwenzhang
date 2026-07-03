@@ -16,6 +16,11 @@
         font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", system-ui, sans-serif;
         /*font-weight: bold;*/
     }
+
+    /* 隐藏 AG Grid 试用水印 (仅开发/测试环境使用) */
+    .ag-watermark {
+        display: none !important;
+    }
 }
 
 body {
